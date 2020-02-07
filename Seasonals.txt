@@ -1,0 +1,213 @@
+
+//-----------------------------------------------------------------------------
+// Sample Web TradingApp 
+//
+// This sample illustrates the ability for a web browser to interact with 
+// EasyLanguage using hashtags in the url and javascript function calls.
+//-----------------------------------------------------------------------------
+
+using elsystem; 
+using elsystem.windows.forms;
+using elsystem.drawing;
+using elsystem.collections;
+using elsystem.io;
+using platform;
+using tsdata.common; 
+using tsdata.marketdata;
+	
+vars: Form mainForm(Null),
+	  WebBrowser web(null),
+	  bool displayDebugInfo(true),
+	  //String url("http://localhost/TS/Seasonals.html"),  
+	  String url("https://jdodonoghue.github.io/TradeStation_Seasonals_TradingApp"),  
+	  bool isWebPageLoaded(false);
+	  var: Timer timer1( NULL );
+	   
+var: Vector myVectorObj(null), Vector myVectorObj1(null);	  	  
+var: PriceSeriesProvider pcp1(null);
+var: intrabarpersist int icnt(0);
+var: intrabarpersist string output("");
+var: string finalOutput("");
+var: string interval(""), intrabarpersist string symbolLabel("");
+
+method void AnalysisTechnique_Initialized( elsystem.Object sender, elsystem.InitializedEventArgs args ) 
+Begin 
+	Cleardebug();
+	
+	//print("AnalysisTechnique_Initialized");	
+	mainForm = Form.Create("TradingAppSeasonals", 800, 600); 
+	mainForm.Dock = DockStyle.Fill;
+	
+	web = WebBrowser.Create(600, 600);
+	web.Url = url;
+	web.Dock = DockStyle.Fill;
+	web.AllowWebBrowserDrop = false;
+	web.ScriptErrorsSuppressed = false;
+	web.DocumentCompleted += web_DocumentCompleted;
+	web.Navigating += web_Navigating; 	
+	mainForm.AddControl(web);	 
+	mainForm.TopMost = true;
+	mainForm.Show();
+	
+	SetupTimer1();
+	
+	pcp1 = new PriceSeriesProvider();
+	
+	icnt = 1;
+	 
+End;
+
+method void SetupTimer1()	
+Begin
+	//print("SetupTimer");
+	timer1 = new elsystem.Timer;
+	timer1.Interval = 100;
+	timer1.AutoReset = true;
+	timer1.Enable = false;
+	timer1.Name = "Timer1";
+	timer1.elapsed += Timer1_Elapsed;
+end;
+
+method void web_Navigating( elsystem.Object sender, elsystem.windows.forms.WebBrowserNavigatingEventArgs args )
+var: int hashLocation, int startLocation, string symbolList;
+begin  	
+	//print("web_Navigating");	
+	//print("URL -> " + args.Url);
+	output = "";
+	finaloutput = "";
+	
+	symbolList = ParseURL(args.Url);
+	
+	myVectorObj = symbolList.Split(",");
+	
+	//interval = myVectorObj[0].ToString();
+	//print("Count " + myVectorObj.Count.ToString());	
+	
+	if myVectorObj.Count > 1 Then
+	Begin
+		//print("start");	
+		icnt = 1;
+		timer1.Start();
+	End;
+	
+	//progress.Visible = true; 
+	
+	isWebPageLoaded = true;
+	
+end;
+
+method void Timer1_Elapsed( Object sender, TimerElapsedEventArgs args ) 
+begin
+	
+	//print("Timer1_Elapsed"); 
+	If icnt < myVectorObj.Count Then
+	begin 
+		if pcp1.State = DataState.Unloaded Then
+		Begin
+			GetData(icnt);
+		end;
+	end;
+	
+	If icnt = myVectorObj.Count Then
+	Begin
+		
+		Timer1.Stop();
+		
+		finalOutput = "[" + output.Remove(output.Length -1, 1) + "]";
+		//print(finalOutput);
+		web.Document.InvokeScript("retriveData", finalOutput);
+		
+	end;
+	
+end;
+
+method void GetData(int icnt) 
+var: string symbolValue, string beginDate, string endDate;//, string interval;
+
+begin 
+	//print("GetData");
+	
+	myVectorObj1 = myVectorObj[icnt].ToString().Split("|");
+	interval = myVectorObj[0].ToString();
+	symbolValue = myVectorObj1[0].ToString();
+	symbolLabel = myVectorObj1[1].ToString();
+	beginDate = myVectorObj1[2].ToString();
+	endDate = myVectorObj1[3].ToString();
+	
+	//print("interval " + interval);
+	//print("symbolValue " + symbolValue);
+	//print("symbolLabel " + symbolLabel);
+	//print("beginDate " + beginDate);
+	//print("endDate " + endDate);
+	
+	pcp1 = new PriceSeriesProvider(); 
+	pcp1.Symbol = symbolValue; 
+	if interval = "Weekly" Then
+	begin 
+		pcp1.Interval.IntervalType = DataIntervalType.Weekly; 
+	end;
+	if interval = "Daily" Then
+	begin 
+		pcp1.Interval.IntervalType = DataIntervalType.Daily; 
+	end;
+	
+	pcp1.Range.Type = DataRangeType.Bars; 
+	
+	pcp1.Range.FirstDate = DateTime.Create(elsystem.elInt.Parse(beginDate, elNumberStyles.Integer));
+	pcp1.Range.LastDate = DateTime.Create(elsystem.elInt.Parse(endDate, elNumberStyles.Integer));
+	
+	pcp1.Name = "PSP1"; 
+	pcp1.Realtime = false;
+	pcp1.StateChanged += pcp1_StateChanged; 
+	pcp1.LoadProvider();
+	
+end;
+
+method void pcp1_StateChanged(elsystem.Object sender, tsdata.common.StateChangedEventArgs args)
+Begin
+	//print("pcp1_StateChanged");
+	If args.NewState = DataState.loaded then
+	begin
+		ProcessData(); 
+		pcp1.CloseProvider();
+	end;
+		
+end;
+
+method void ProcessData() 
+var: int cnt, int id;
+begin 
+	id = 1;
+	for cnt = pcp1.Count - 1 downto 0 
+	begin 
+		output += "{";
+		output += Doublequote + "weekid" + Doublequote + ":" + id.ToString() + ",";
+		output += Doublequote + "symbol" + Doublequote + ":" + Doublequote + pcp1.Symbol + Doublequote + ",";
+		output += Doublequote + "label" + Doublequote + ":" + Doublequote + symbolLabel + Doublequote + ",";
+		output += Doublequote + "month" + Doublequote + ":" + Doublequote + pcp1.Data.Time[cnt].Format("%b").ToString() + Doublequote + ",";
+		output += Doublequote + "date" + Doublequote + ":" + Doublequote + pcp1.Data.Time[cnt].ToString() + Doublequote + ",";
+		output += Doublequote + "close" + Doublequote + ":" + Doublequote + pcp1.Close[cnt].ToString() + Doublequote + ",";
+		output += Doublequote + "high" + Doublequote + ":" + Doublequote + pcp1.High[cnt].ToString() + Doublequote + ",";
+		output += Doublequote + "low" + Doublequote + ":" + Doublequote + pcp1.Low[cnt].ToString() + Doublequote;
+		output += "},";
+		id += 1;
+	end;  
+	icnt += 1;	
+end; 
+
+method string ParseURL(String url)
+var: int symbolListLocation, int delimiterLocation, string identifier, string symbolList;
+begin
+	//print("web_DocumentCompleted");
+  identifier = "#";
+  symbolListLocation = instr( url, identifier );
+  symbolList = rightstr( url, strlen(url) - (symbolListLocation + strlen(identifier) - 1));
+  return symbolList;
+end;
+
+method void web_DocumentCompleted (elsystem.Object sender, elsystem.windows.forms.WebBrowserDocumentCompletedEventArgs args )
+begin
+	//print("web_DocumentCompleted");
+	
+end;
+
