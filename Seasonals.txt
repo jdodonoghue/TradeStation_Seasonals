@@ -19,7 +19,7 @@ vars: Form mainForm(Null),
 	  WebBrowser web(null),
 	  bool displayDebugInfo(true),
 	  //String url("http://localhost/TS/Seasonals.html"),  
-	  String url("https://jdodonoghue.github.io/TradeStation_Seasonals_TradingApp.html"),   
+	  String url("https://jdodonoghue.github.io/TradeStation/Seasonals_TradingApp.html"), 
 	  bool isWebPageLoaded(false);
 	  var: Timer timer1( NULL );
 	   
